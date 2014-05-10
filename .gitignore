@@ -30,3 +30,4 @@
 *.vcxproj*
 
 Debug
+*.img
