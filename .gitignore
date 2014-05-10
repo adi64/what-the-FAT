@@ -19,3 +19,12 @@
 *.exe
 *.out
 *.app
+
+# VS files
+.gitattributes
+*.opensdf
+*.sdf
+*.sln
+*.suo
+
+*.vcxproj*
