@@ -1,7 +1,11 @@
+#include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
 
 #include "data.h"
+
+unsigned char fatType;
 
 void printVolumeInformation(BOOTSECTOR* bootsector){
 	if (!bootsector){
@@ -12,6 +16,15 @@ void printVolumeInformation(BOOTSECTOR* bootsector){
 	// append NULL byte to terminate string
 	bootsector->EBPB.volumelabel[10] = '\0';
 	bootsector->EBPB.fattype[7] = '\0';
+
+        short numberofclusters = bootsector->BPB.numberofsectors / bootsector->BPB.sectorspercluster;
+        if(numberofclusters < 4086) {
+            fatType = 12;
+        } else if(numberofclusters < 65526) {
+            fatType = 16;
+        } else {
+            fatType = 32;
+        }
 
 	printf("Vendor: %s\n", bootsector->vendor);
 	printf("Bios Parameter Block:\n");
@@ -36,27 +49,39 @@ void printVolumeInformation(BOOTSECTOR* bootsector){
 	printf("  FAT type: %s\n", bootsector->EBPB.fattype);
 	printf("  Bootcode: [not shown]\n");
 	printf("  End of sector: %x\n", bootsector->EBPB.endofsector);
+        printf("Total number of clusters: %d ( suggests FAT %d )\n", bootsector->BPB.numberofsectors / bootsector->BPB.sectorspercluster, fatType);
 }
 
 int main(int argc, char* argv[]) {
 
-	int handle = open("BSA.img", O_RDONLY | O_BINARY);
+	int handle = open("BSA.img", O_RDONLY);
 
 	if (handle == -1){
 		printf("Can't open file! errno: %d\n", errno);
 		exit(1);
 	}
 
-	BOOTSECTOR* bootsect = (BOOTSECTOR*)malloc(sizeof(char)* 512);
+	BOOTSECTOR* bootsector = (BOOTSECTOR*)malloc(sizeof(char)* 512);
 
-	if (read(handle, bootsect, 512) != 512) {
+	if (read(handle, bootsector, 512) != 512) {
 		printf("Could not read 512 Bytes! errno: %d\n", errno);
 		exit(1);
 	}
 
-	printVolumeInformation(bootsect);
+	printVolumeInformation(bootsector);
 
-	getch();
+        unsigned int firstFATStartPos = bootsector->BPB.reservedsectors * bootsector->BPB.sectorsize;
+
+        printf("First FAT starting at byte %d\n", firstFATStartPos);
+
+        lseek(handle, firstFATStartPos, SEEK_SET);
+
+        unsigned int rootDirectoryStartPos = firstFATStartPos + (bootsector->BPB.numberofFATs * bootsector->BPB.FATsectors * bootsector->BPB.sectorsize);
+
+        printf("Root directory starting at byte %d\n", rootDirectoryStartPos);
+
+
+	//getchar();
 
 	return 0;
 }
