@@ -127,7 +127,7 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     if(directoryEntry->ext[0] != ' '){
         name[8] = '.';
         strncpy(&name[9], directoryEntry->ext, 3);
-        name[13] = '\0';
+        name[12] = '\0';
     }else{
         name[8] = '\0';
     }
@@ -139,10 +139,14 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     printf("00:00:00 ");
 
     // directory or file
-    printf(" <DIR> ");
+    if((directoryEntry->attr & (1<<4)) > 0) {
+        printf(" <DIR> ");
+    }else{
+        printf("       ");
+    }
 
     // file size
-    printf("%10d ", 0);
+    printf("%10d ", directoryEntry->size);
 
     // file name
     printf("%s", name);
@@ -152,7 +156,8 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
 
 void listDirectory(DIRENTRY* directoryEntry) {
     printf("first cluster: %d\n", directoryEntry->firstcluser);
-    printf("next cluster: %d\n", getnextcluster(directoryEntry->firstcluser));
+    unsigned short nextCluster = getnextcluster(directoryEntry->firstcluser);
+    printf("next cluster: %d\n", nextCluster);
 
     printDirectoryEntry(directoryEntry);
 }
@@ -196,16 +201,26 @@ int main(int argc, char* argv[]) {
 
     printf("Root directory starting at byte %d\n", rootDirectoryStartPos);
 
-    DIRENTRY* firstRootEntry = (DIRENTRY*)malloc(sizeof(DIRENTRY));
     newPos = lseek(handle, rootDirectoryStartPos, SEEK_SET);
     printf("now at %d\n", newPos);
 
-    if((bytesRead = read(handle, firstRootEntry, sizeof(DIRENTRY))) != sizeof(DIRENTRY)) {
-        printf("Could not read %d Bytes(read %d)! errno: %d\n", sizeof(DIRENTRY), bytesRead, errno);
-        exit(1);
+    unsigned int i=0;
+    for(i=0; i<bootsector->BPB.rootentries; i++) {
+        DIRENTRY* rootEntry = (DIRENTRY*)malloc(sizeof(DIRENTRY));
+
+        if((bytesRead = read(handle, rootEntry, sizeof(DIRENTRY))) != sizeof(DIRENTRY)) {
+            printf("Could not read %d Bytes(read %d)! errno: %d\n", sizeof(DIRENTRY), bytesRead, errno);
+            exit(1);
+        }
+
+        listDirectory(rootEntry);
+
+        // last Entry: 0x00
+        if(rootEntry->name[0] == '\0') {
+            break;
+        }
     }
 
-    listDirectory(firstRootEntry);
 
 	//getchar();
 
