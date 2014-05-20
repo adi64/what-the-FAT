@@ -5,6 +5,36 @@
 
 #include "data.h"
 
+typedef struct DirQueueItem_t {
+    DIRENTRY* directoryEntry;
+    struct DirQueueItem_t* next;
+} DirQueueItem;
+
+DirQueueItem* firstDirItem;
+
+DirQueueItem* dir_pop_front() {
+    DirQueueItem* ret = firstDirItem->next;
+    if(firstDirItem->next) {
+        firstDirItem->next = firstDirItem->next->next;
+    }
+    return ret;
+}
+
+void dir_push_back(DIRENTRY* directoryEntry) {
+    DirQueueItem* newDirItem = (DirQueueItem*)malloc(sizeof(DirQueueItem));
+
+    newDirItem->directoryEntry = directoryEntry;
+    newDirItem->next = 0;
+
+    DirQueueItem* lastItem = firstDirItem;
+
+    while(lastItem->next) {
+        lastItem = lastItem->next;
+    }
+
+    lastItem->next = newDirItem;
+}
+
 unsigned char fatType;
 BOOTSECTOR* bootsector;
 char* FAT;
@@ -119,6 +149,14 @@ DIRENTRY* readDirectoryEntry(unsigned short cluster) {
     return directoryEntry;
 }
 
+int isDirectory(DIRENTRY* directoryEntry) {
+    if(!directoryEntry){
+        return 0;
+    }
+
+    return ((directoryEntry->attr & (1<<4)) > 0);
+}
+
 void printDirectoryEntry(DIRENTRY* directoryEntry) {
     char name[13];
 
@@ -139,7 +177,7 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     printf("00:00:00 ");
 
     // directory or file
-    if((directoryEntry->attr & (1<<4)) > 0) {
+    if(isDirectory(directoryEntry)) {
         printf(" <DIR> ");
     }else{
         printf("       ");
