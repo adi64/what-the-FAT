@@ -12,11 +12,13 @@ typedef struct DirQueueItem_t {
 
 DirQueueItem* firstDirItem;
 
-DirQueueItem* dir_pop_front() {
-    DirQueueItem* ret = firstDirItem->next;
+DIRENTRY* dir_pop_front() {
+    DirQueueItem* front = firstDirItem->next->directoryEntry;
+    DIRENTRY* ret = front->directoryEntry;
     if(firstDirItem->next) {
         firstDirItem->next = firstDirItem->next->next;
     }
+    free(front);
     return ret;
 }
 
@@ -26,9 +28,15 @@ void dir_push_back(DIRENTRY* directoryEntry) {
     newDirItem->directoryEntry = directoryEntry;
     newDirItem->next = 0;
 
+    if(!firstDirItem) {
+        firstDirItem = (DirQueueItem*)malloc(sizeof(DirQueueItem));
+        firstDirItem->directoryEntry = 0;
+        firstDirItem->next = 0;
+    }
+
     DirQueueItem* lastItem = firstDirItem;
 
-    while(lastItem->next) {
+    while(lastItem && lastItem->next) {
         lastItem = lastItem->next;
     }
 
@@ -146,6 +154,8 @@ unsigned int getclusteroffset(unsigned short cluster)
 DIRENTRY* readDirectoryEntry(unsigned short cluster) {
     DIRENTRY* directoryEntry = (DIRENTRY*)malloc(sizeof(DIRENTRY));
 
+
+
     return directoryEntry;
 }
 
@@ -198,6 +208,11 @@ void listDirectory(DIRENTRY* directoryEntry) {
     printf("next cluster: %d\n", nextCluster);
 
     printDirectoryEntry(directoryEntry);
+
+    if(isDirectory(directoryEntry)) {
+        dir_push_back(directoryEntry);
+    }
+
 }
 
 int main(int argc, char* argv[]) {
