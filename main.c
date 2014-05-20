@@ -14,11 +14,12 @@ DirQueueItem* firstDirItem;
 
 DIRENTRY* dir_pop_front() {
     DirQueueItem* front = firstDirItem->next;
-    DIRENTRY* ret = front->directoryEntry;
+    DIRENTRY* ret = 0;
     if(firstDirItem->next) {
+        ret = front->directoryEntry;
         firstDirItem->next = firstDirItem->next->next;
+        free(front);
     }
-    free(front);
     return ret;
 }
 
@@ -143,7 +144,7 @@ unsigned int getclusteroffset(unsigned short cluster)
     {
         case 12:
         case 16:
-            ret = DataRegion * bootsector->BPB.sectorsize + (cluster-2) * bootsector->BPB.sectorspercluster * bootsector->BPB.sectorsize;
+            ret = DataRegion /* * bootsector->BPB.sectorsize */ + (cluster-2) * bootsector->BPB.sectorspercluster * bootsector->BPB.sectorsize;
             break;
         default:
             exit(1);
@@ -155,6 +156,7 @@ unsigned int getclusteroffset(unsigned short cluster)
 DIRENTRY* readDirectoryEntry() {
     DIRENTRY* directoryEntry = (DIRENTRY*)malloc(sizeof(DIRENTRY));
 
+    printf("reading from offset %d...\n", tell(handle));
     unsigned int bytesRead;
     if((bytesRead = read(handle, directoryEntry, sizeof(DIRENTRY))) != sizeof(DIRENTRY)) {
         printf("Could not read %d Bytes(read %d)! errno: %d\n", sizeof(DIRENTRY), bytesRead, errno);
@@ -220,7 +222,15 @@ void listDirectory(unsigned int offset) {
         printDirectoryEntry(directoryEntry);
 
         if(isDirectory(directoryEntry)) {
-            dir_push_back(directoryEntry);
+            char dot[8] = {0x2E,0x20,0x20,0x20,0x20,0x20,0x20,0x20};
+            char dotdot[8] = {0x2E,0x2E,0x20,0x20,0x20,0x20,0x20,0x20};
+//            printf("strcmp(\".       \")=%d, strcmp(\"..      \")=%d\n",
+//                   strcmp(directoryEntry->name, dot),
+//                   strcmp(directoryEntry->name, dotdot)
+//                   );
+            if((strcmp(directoryEntry->name, dot) != -1) && (strcmp(directoryEntry->name, dotdot) != -1)) {
+                dir_push_back(directoryEntry);
+            }
         }
     } while(directoryEntry->name[0] != '\0');
 }
