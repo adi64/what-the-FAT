@@ -13,7 +13,7 @@ typedef struct DirQueueItem_t {
 DirQueueItem* firstDirItem;
 
 DIRENTRY* dir_pop_front() {
-    DirQueueItem* front = firstDirItem->next->directoryEntry;
+    DirQueueItem* front = firstDirItem->next;
     DIRENTRY* ret = front->directoryEntry;
     if(firstDirItem->next) {
         firstDirItem->next = firstDirItem->next->next;
@@ -43,6 +43,7 @@ void dir_push_back(DIRENTRY* directoryEntry) {
     lastItem->next = newDirItem;
 }
 
+int handle;
 unsigned char fatType;
 BOOTSECTOR* bootsector;
 char* FAT;
@@ -151,10 +152,14 @@ unsigned int getclusteroffset(unsigned short cluster)
     return ret;
 }
 
-DIRENTRY* readDirectoryEntry(unsigned short cluster) {
+DIRENTRY* readDirectoryEntry() {
     DIRENTRY* directoryEntry = (DIRENTRY*)malloc(sizeof(DIRENTRY));
 
-
+    unsigned int bytesRead;
+    if((bytesRead = read(handle, directoryEntry, sizeof(DIRENTRY))) != sizeof(DIRENTRY)) {
+        printf("Could not read %d Bytes(read %d)! errno: %d\n", sizeof(DIRENTRY), bytesRead, errno);
+        exit(1);
+    }
 
     return directoryEntry;
 }
@@ -202,22 +207,36 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     printf("\n");
 }
 
-void listDirectory(DIRENTRY* directoryEntry) {
-    printf("first cluster: %d\n", directoryEntry->firstcluser);
-    unsigned short nextCluster = getnextcluster(directoryEntry->firstcluser);
-    printf("next cluster: %d\n", nextCluster);
+void listDirectory(unsigned int offset) {
 
-    printDirectoryEntry(directoryEntry);
+    lseek(handle, offset, SEEK_SET);
 
-    if(isDirectory(directoryEntry)) {
-        dir_push_back(directoryEntry);
+    DIRENTRY* directoryEntry;
+    do {
+        directoryEntry = readDirectoryEntry();
+
+        printf("first cluster: %d next cluster: %d\n", directoryEntry->firstcluser, getnextcluster(directoryEntry->firstcluser));
+
+        printDirectoryEntry(directoryEntry);
+
+        if(isDirectory(directoryEntry)) {
+            dir_push_back(directoryEntry);
+        }
+    } while(directoryEntry->name[0] != '\0');
+}
+
+void list_recursive() {
+    DIRENTRY* directoryEntry;
+
+    while(directoryEntry = dir_pop_front()) {
+        printf("== %s ==\n", directoryEntry->name);
+        listDirectory(getclusteroffset(directoryEntry->firstcluser));
     }
-
 }
 
 int main(int argc, char* argv[]) {
 
-    int handle = open("BSA.img", O_RDONLY | O_BINARY);
+    handle = open("BSA.img", O_RDONLY | O_BINARY);
 
 	if (handle == -1){
 		printf("Can't open file! errno: %d\n", errno);
@@ -251,29 +270,15 @@ int main(int argc, char* argv[]) {
     }
 
     unsigned int rootDirectoryStartPos = firstFATStartPos + (bootsector->BPB.numberofFATs * FATSize);
+    unsigned int rootDirectoryStartCluster = bootsector->BPB.reservedsectors + bootsector->BPB.FATsectors * bootsector->BPB.numberofFATs;
 
-    printf("Root directory starting at byte %d\n", rootDirectoryStartPos);
+    printf("Root directory starting at cluster %d / byte %d\n", rootDirectoryStartCluster, rootDirectoryStartPos);
 
     newPos = lseek(handle, rootDirectoryStartPos, SEEK_SET);
     printf("now at %d\n", newPos);
 
-    unsigned int i=0;
-    for(i=0; i<bootsector->BPB.rootentries; i++) {
-        DIRENTRY* rootEntry = (DIRENTRY*)malloc(sizeof(DIRENTRY));
-
-        if((bytesRead = read(handle, rootEntry, sizeof(DIRENTRY))) != sizeof(DIRENTRY)) {
-            printf("Could not read %d Bytes(read %d)! errno: %d\n", sizeof(DIRENTRY), bytesRead, errno);
-            exit(1);
-        }
-
-        listDirectory(rootEntry);
-
-        // last Entry: 0x00
-        if(rootEntry->name[0] == '\0') {
-            break;
-        }
-    }
-
+    listDirectory(rootDirectoryStartPos);
+    list_recursive();
 
 	//getchar();
 
