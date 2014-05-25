@@ -174,21 +174,45 @@ int isDirectory(DIRENTRY* directoryEntry) {
     return ((directoryEntry->attr & (1<<4)) > 0);
 }
 
-void printDirectoryEntry(DIRENTRY* directoryEntry) {
-    char name[13];
+/*
+ * Formats a date entry like 'DD.MM.YYYY'
+ * Input buf needs to be >= 11 bytes
+ */
+void formatDirectoryEntryDate(unsigned short date, char* buf) {
+    unsigned short year = 1980 + (date >> 9);
+    unsigned short month = (date & 0x1E0) >> 5;
+    unsigned short day = (date & 0x1F);
+    sprintf(buf, "%02d.%02d.%d", day, month, year);
+}
 
-    strncpy(name, directoryEntry->name, 8);
+/*
+ * Formats directory entry like 'file.ext'
+ * Input buf needs to be >= 14 bytes
+ */
+void formatDirectoryEntryName(DIRENTRY* directoryEntry, char* buf) {
+    strncpy(buf, directoryEntry->name, 8);
 
     if(directoryEntry->ext[0] != ' '){
-        name[8] = '.';
-        strncpy(&name[9], directoryEntry->ext, 3);
-        name[12] = '\0';
+
+        // find end of file name
+        unsigned short i = 7;
+        while(i > 0 && buf[i] == 0x20) { --i; }
+
+        // append '.' and file extension
+        buf[i+1] = '.';
+        strncpy(&buf[i+2], directoryEntry->ext, 3);
+        buf[i+5] = '\0';
     }else{
-        name[8] = '\0';
+        buf[8] = '\0';
     }
+}
+
+void printDirectoryEntry(DIRENTRY* directoryEntry) {
 
     // date
-    printf("00.00.0000 ");
+    char changedate[11];
+    formatDirectoryEntryDate(directoryEntry->changedate, changedate);
+    printf("%s ", changedate);
 
     // time
     printf("00:00:00 ");
@@ -204,6 +228,8 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     printf("%10d ", directoryEntry->size);
 
     // file name
+    char name[14];
+    formatDirectoryEntryName(directoryEntry, name);
     printf("%s", name);
 
     printf("\n");
