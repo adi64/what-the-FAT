@@ -156,7 +156,7 @@ unsigned int getclusteroffset(unsigned short cluster)
 DIRENTRY* readDirectoryEntry() {
     DIRENTRY* directoryEntry = (DIRENTRY*)malloc(sizeof(DIRENTRY));
 
-    printf("reading from offset %d...\n", tell(handle));
+    printf("reading from offset %l...\n", tell(handle));
     unsigned int bytesRead;
     if((bytesRead = read(handle, directoryEntry, sizeof(DIRENTRY))) != sizeof(DIRENTRY)) {
         printf("Could not read %d Bytes(read %d)! errno: %d\n", sizeof(DIRENTRY), bytesRead, errno);
@@ -183,6 +183,20 @@ void formatDirectoryEntryDate(unsigned short date, char* buf) {
     unsigned short month = (date & 0x1E0) >> 5;
     unsigned short day = (date & 0x1F);
     sprintf(buf, "%02d.%02d.%d", day, month, year);
+}
+
+/*
+ * Formats a time entry like 'HH:MM:SS' (24 hour format)
+ * Input buf needs to be >= 9 bytes
+ */
+void formatDirectoryEntryTime(unsigned short time, char* buf) {
+    // Bytes 15 - 11, hours 0 - 23
+    unsigned short hour = time >> 11;
+    // Bytes 10 - 05, minutes 0 - 59
+    unsigned short minute = (time & 0x7E0) >> 5;
+    // Bytes 04 - 00, seconds 0 - 29 ( times two, only even seconds)
+    unsigned short second = (time & 0x1F) * 2;
+    sprintf(buf, "%02d:%02d:%02d", hour, minute, second);
 }
 
 /*
@@ -215,7 +229,9 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     printf("%s ", changedate);
 
     // time
-    printf("00:00:00 ");
+    char changetime[9];
+    formatDirectoryEntryTime(directoryEntry->changetime, changetime);
+    printf("%s ", changetime);
 
     // directory or file
     if(isDirectory(directoryEntry)) {
@@ -250,10 +266,8 @@ void listDirectory(unsigned int offset) {
         if(isDirectory(directoryEntry)) {
             char dot[8] = {0x2E,0x20,0x20,0x20,0x20,0x20,0x20,0x20};
             char dotdot[8] = {0x2E,0x2E,0x20,0x20,0x20,0x20,0x20,0x20};
-//            printf("strcmp(\".       \")=%d, strcmp(\"..      \")=%d\n",
-//                   strcmp(directoryEntry->name, dot),
-//                   strcmp(directoryEntry->name, dotdot)
-//                   );
+
+            // not that nice, but it works.
             if((strcmp(directoryEntry->name, dot) != -1) && (strcmp(directoryEntry->name, dotdot) != -1)) {
                 dir_push_back(directoryEntry);
             }
@@ -264,7 +278,7 @@ void listDirectory(unsigned int offset) {
 void list_recursive() {
     DIRENTRY* directoryEntry;
 
-    while(directoryEntry = dir_pop_front()) {
+    while((directoryEntry = dir_pop_front())) {
         printf("== %s ==\n", directoryEntry->name);
         listDirectory(getclusteroffset(directoryEntry->firstcluser));
     }
@@ -272,7 +286,15 @@ void list_recursive() {
 
 int main(int argc, char* argv[]) {
 
-    handle = open("BSA.img", O_RDONLY | O_BINARY);
+    char filename[1024] = "BSA.img";
+    if(argc != 2) {
+        printf("Usage: %s filename\n", argv[0]);
+        printf("I will pick file 'BSA.img' for you.\n");
+    }else{
+        strncpy(filename, argv[2], 1023);
+    }
+
+    handle = open(filename, O_RDONLY | O_BINARY);
 
 	if (handle == -1){
 		printf("Can't open file! errno: %d\n", errno);
