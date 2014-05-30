@@ -48,6 +48,8 @@ int handle;
 unsigned char fatType;
 BOOTSECTOR* bootsector;
 char* FAT;
+char dot[8] = {0x2E,0x20,0x20,0x20,0x20,0x20,0x20,0x20};
+char dotdot[8] = {0x2E,0x2E,0x20,0x20,0x20,0x20,0x20,0x20};
 
 void printVolumeInformation(BOOTSECTOR* bootsector){
 	if (!bootsector){
@@ -156,7 +158,7 @@ unsigned int getclusteroffset(unsigned short cluster)
 DIRENTRY* readDirectoryEntry() {
     DIRENTRY* directoryEntry = (DIRENTRY*)malloc(sizeof(DIRENTRY));
 
-    printf("reading from offset %l...\n", tell(handle));
+    printf("reading from offset %d...\n", tell(handle));
     unsigned int bytesRead;
     if((bytesRead = read(handle, directoryEntry, sizeof(DIRENTRY))) != sizeof(DIRENTRY)) {
         printf("Could not read %d Bytes(read %d)! errno: %d\n", sizeof(DIRENTRY), bytesRead, errno);
@@ -176,6 +178,7 @@ int isDirectory(DIRENTRY* directoryEntry) {
 
 /*
  * Formats a date entry like 'DD.MM.YYYY'
+ *
  * Input buf needs to be >= 11 bytes
  */
 void formatDirectoryEntryDate(unsigned short date, char* buf) {
@@ -187,6 +190,7 @@ void formatDirectoryEntryDate(unsigned short date, char* buf) {
 
 /*
  * Formats a time entry like 'HH:MM:SS' (24 hour format)
+ *
  * Input buf needs to be >= 9 bytes
  */
 void formatDirectoryEntryTime(unsigned short time, char* buf) {
@@ -201,6 +205,7 @@ void formatDirectoryEntryTime(unsigned short time, char* buf) {
 
 /*
  * Formats directory entry like 'file.ext'
+ *
  * Input buf needs to be >= 14 bytes
  */
 void formatDirectoryEntryName(DIRENTRY* directoryEntry, char* buf) {
@@ -219,6 +224,48 @@ void formatDirectoryEntryName(DIRENTRY* directoryEntry, char* buf) {
     }else{
         buf[8] = '\0';
     }
+}
+
+/*
+ * Retrieves the current folder's name
+ *
+ * This is useful if you are in a directory and
+ * want to know its name but only have a '.' entry at hand.
+ */
+void currentFolderName(DIRENTRY* currentDirectoryEntry, char* buf) {
+
+    DIRENTRY* directoryEntry;
+    DIRENTRY* parentDirectoryEntry = 0;
+
+    lseek(handle, getclusteroffset(currentDirectoryEntry->firstcluser), SEEK_SET);
+
+    // read current directory, find parent entry ('..')
+    do {
+        directoryEntry = readDirectoryEntry();
+        if(memcmp(directoryEntry->name, dotdot, 8) == 0) {
+            parentDirectoryEntry = directoryEntry;
+            break;
+        }
+    } while(directoryEntry->name[0] != '\0');
+
+    if(!parentDirectoryEntry) {
+        printf("Can't find parent directory entry in current directory listing!\n");
+        strncpy(buf, "", 0);
+        return;
+    }
+
+    // read parent directory, find entry that matches current (original) folder's first cluster
+    lseek(handle, getclusteroffset(parentDirectoryEntry->firstcluser), SEEK_SET);
+
+    do {
+        directoryEntry = readDirectoryEntry();
+        if(directoryEntry->firstcluser == currentDirectoryEntry->firstcluser) {
+            strncpy(buf, directoryEntry->name, strlen(directoryEntry->name));
+            return;
+        }
+    } while((directoryEntry->name[0] != '\0'));
+
+    printf("Can't find current directory entry in parent directory listing!\n");
 }
 
 void printDirectoryEntry(DIRENTRY* directoryEntry) {
@@ -253,22 +300,34 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
 
 void listDirectory(unsigned int offset) {
 
-    lseek(handle, offset, SEEK_SET);
+    long newOffset = offset;
 
     DIRENTRY* directoryEntry;
+
+    int FIXME_first = 1;
+
     do {
+        lseek(handle, newOffset, SEEK_SET);
         directoryEntry = readDirectoryEntry();
 
+        // we need to preserve the offset in case any operations move the file pointer
+        newOffset = tell(handle);
+
         printf("first cluster: %d next cluster: %d\n", directoryEntry->firstcluser, getnextcluster(directoryEntry->firstcluser));
+
+        if(FIXME_first) {
+            char buf[16];
+            currentFolderName(directoryEntry, buf);
+            printf("folder name: %s\n", buf);
+            FIXME_first = 0;
+        }
 
         printDirectoryEntry(directoryEntry);
 
         if(isDirectory(directoryEntry)) {
-            char dot[8] = {0x2E,0x20,0x20,0x20,0x20,0x20,0x20,0x20};
-            char dotdot[8] = {0x2E,0x2E,0x20,0x20,0x20,0x20,0x20,0x20};
-
-            // not that nice, but it works.
-            if((strcmp(directoryEntry->name, dot) != -1) && (strcmp(directoryEntry->name, dotdot) != -1)) {
+            // add subdirectories to the queue
+            // please ignore the current directory entry ('.') and parent ('..')
+            if((memcmp(directoryEntry->name, dot, 8) != 0) && (memcmp(directoryEntry->name, dotdot, 8) != 0)) {
                 dir_push_back(directoryEntry);
             }
         }
