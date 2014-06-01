@@ -45,8 +45,8 @@
 #define CLUSTER_BAD(b)          ((1<<(b))-9)    //0xFF7
 #define CLUSTER_LAST_MIN(b)     ((1<<(b))-8)    //0xFF8
 #define CLUSTER_LAST_MAX(b)     ((1<<(b))-1)    //0xFFF
-//#define CLUSTER_LAST_MIN        0xFF8
-//#define CLUSTER_LAST_MAX        0xFFF
+#define CLUSTER_LAST_MIN        0xFF8
+#define CLUSTER_LAST_MAX        0xFFF
 
 
 #define VFAT_END 0x0000

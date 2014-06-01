@@ -237,7 +237,7 @@ void formatDirectoryEntryTime(unsigned short time, char* buf) {
 /**
  * @brief Formats directory entry like 'file.ext'
  * @param directoryEntry
- * @param buf is a buffer >= 14 bytes
+ * @param buf is a buffer >= 13 bytes
  */
 void formatDirectoryEntryName(DIRENTRY* directoryEntry, char* buf) {
     strncpy(buf, directoryEntry->name, 8);
@@ -253,7 +253,8 @@ void formatDirectoryEntryName(DIRENTRY* directoryEntry, char* buf) {
         strncpy(&buf[i+2], directoryEntry->ext, 3);
         buf[i+5] = '\0';
     }else{
-        buf[8] = '\0';
+        strnset(&buf[8], 0x20, 4);
+        //buf[8] = '\0';
     }
 }
 
@@ -327,7 +328,14 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     formatDirectoryEntryName(directoryEntry, name);
     printf("%s  ", name);
 
-    printf("Clusters %d -> %d -> ...", directoryEntry->firstcluser, getnextcluster(directoryEntry->firstcluser));
+    // cluster dev info
+    unsigned short firstcluster = directoryEntry->firstcluser;
+    unsigned short nextcluster = getnextcluster(firstcluster);
+
+    printf("Cluster(s) %d", directoryEntry->firstcluser);
+    if(nextcluster < CLUSTER_LAST_MIN) {
+           printf(" -> %d -> ...", nextcluster);
+    }
 
     printf("\n");
 }
