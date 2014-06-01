@@ -164,7 +164,11 @@ unsigned int getclusteroffset(unsigned short cluster)
     {
         case 12:
         case 16:
-            ret = DataRegion /* * bootsector->BPB.sectorsize */ + (cluster-2) * bootsector->BPB.sectorspercluster * bootsector->BPB.sectorsize;
+            if(cluster == 0) {
+                ret = (bootsector->BPB.reservedsectors + bootsector->BPB.numberofFATs * bootsector->BPB.FATsectors) * bootsector->BPB.sectorsize;
+            }else{
+                ret = DataRegion /* * bootsector->BPB.sectorsize */ + (cluster-2) * bootsector->BPB.sectorspercluster * bootsector->BPB.sectorsize;
+            }
             break;
         default:
             exit(1);
@@ -257,6 +261,32 @@ void formatDirectoryEntryName(DIRENTRY* directoryEntry, char* buf) {
         //buf[8] = '\0';
     }
 }
+/**
+ * @brief parentDirectory
+ * @param currentDirectoryEntry
+ * @return parent DIRENTRY*
+ */
+DIRENTRY* parentDirectory(DIRENTRY* currentDirectoryEntry) {
+    lseek(handle, getclusteroffset(currentDirectoryEntry->firstcluser), SEEK_SET);
+
+    DIRENTRY* directoryEntry = 0;
+    DIRENTRY* parentDirectoryEntry = 0;
+
+    // read current directory, find parent entry ('..')
+    while(directoryEntry = readDirectoryEntry()) {
+        if(memcmp(directoryEntry->name, dotdot, 8) == 0) {
+            parentDirectoryEntry = directoryEntry;
+            printf("parent directory ('%s') at cluster %d\n", parentDirectoryEntry->name, parentDirectoryEntry->firstcluser);
+            break;
+        }
+    }
+
+    if(!parentDirectoryEntry) {
+        printf("Can't find parent directory entry in current directory listing!\n");
+    }
+
+    return parentDirectoryEntry;
+}
 
 /**
  * @brief Retrieves the current folder's name (handy if you only have a '.' entry at hand)
@@ -268,21 +298,9 @@ void currentFolderName(DIRENTRY* currentDirectoryEntry, char* buf) {
     DIRENTRY* directoryEntry;
     DIRENTRY* parentDirectoryEntry = 0;
 
-    lseek(handle, getclusteroffset(currentDirectoryEntry->firstcluser), SEEK_SET);
+    printf("determining folder name for folder at cluster %d...\n", currentDirectoryEntry->firstcluser);
 
-    // read current directory, find parent entry ('..')
-    while(directoryEntry = readDirectoryEntry()) {
-        if(memcmp(directoryEntry->name, dotdot, 8) == 0) {
-            parentDirectoryEntry = directoryEntry;
-            break;
-        }
-    }
-
-    if(!parentDirectoryEntry) {
-        printf("Can't find parent directory entry in current directory listing!\n");
-        strncpy(buf, "", 0);
-        return;
-    }
+    parentDirectoryEntry = parentDirectory(currentDirectoryEntry);
 
     // read parent directory, find entry that matches current (original) folder's first cluster
     lseek(handle, getclusteroffset(parentDirectoryEntry->firstcluser), SEEK_SET);
@@ -295,6 +313,29 @@ void currentFolderName(DIRENTRY* currentDirectoryEntry, char* buf) {
     }
 
     printf("Can't find current directory entry in parent directory listing!\n");
+}
+
+/**
+ * @brief Retrieves the absolute path of a given directory
+ * @param directoryEntry
+ * @param buf is a buffer big enough to hold the absolute path
+ */
+void absoluteDirectoryPath(DIRENTRY* directoryEntry, char* buf) {
+    DIRENTRY* parent = parentDirectory(directoryEntry);
+    if(parent == 0) {
+        sprintf(buf, "\\\\.\\");
+        printf("\\\\.\\ \n");
+        return;
+    }
+
+    absoluteDirectoryPath(parent, buf);
+    unsigned short stringLength = strlen(buf);
+
+    char dirname[512];
+    formatDirectoryEntryName(directoryEntry, dirname);
+
+    sprintf(&buf[stringLength], "\\%s", dirname);
+    printf("+ %s (cluster %d) \n", dirname, directoryEntry->firstcluser);
 }
 
 /**
@@ -351,17 +392,17 @@ void listDirectory(unsigned int offset) {
 
     DIRENTRY* directoryEntry;
 
-    int FIXME_first = 1;
-
     while(directoryEntry = readDirectoryEntry()) {
         // we need to preserve the offset in case any operations move the file pointer
         newOffset = tell(handle);
 
-        if(FIXME_first) {
+        if(memcmp(directoryEntry->name, dot, 8) == 0) {
             char buf[16];
             currentFolderName(directoryEntry, buf);
             printf("folder name: %s\n", buf);
-            FIXME_first = 0;
+            char buf2[1024];
+            absoluteDirectoryPath(directoryEntry, buf2);
+            printf("absolute path: %s\n", buf2);
         }
 
         printDirectoryEntry(directoryEntry);
