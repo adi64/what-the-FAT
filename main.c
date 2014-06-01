@@ -436,7 +436,7 @@ int main(int argc, char* argv[]) {
     char filename[1024] = "BSA.img";
     if(argc != 2) {
         printf("Usage: %s filename\n", argv[0]);
-        printf("I will pick file 'BSA.img' for you.\n");
+        printf("I will pick file '%s' for you.\n", filename);
     }else{
         strncpy(filename, argv[2], 1023);
     }
