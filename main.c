@@ -5,13 +5,23 @@
 
 #include "data.h"
 
+/**
+ * @brief Simple linked list for DIRENTRYs, used as queue
+ */
 typedef struct DirQueueItem_t {
     DIRENTRY* directoryEntry;
     struct DirQueueItem_t* next;
 } DirQueueItem;
 
+/**
+ * @brief Global list head, only the 'next' pointer should be used!
+ */
 DirQueueItem* firstDirItem;
 
+/**
+ * @brief Pop list head and return entry
+ * @return pointer to first item in queue
+ */
 DIRENTRY* dir_pop_front() {
     DirQueueItem* front = firstDirItem->next;
     DIRENTRY* ret = 0;
@@ -23,6 +33,10 @@ DIRENTRY* dir_pop_front() {
     return ret;
 }
 
+/**
+ * @brief Appends entry to the list tail
+ * @param directoryEntry pointer to push back
+ */
 void dir_push_back(DIRENTRY* directoryEntry) {
     DirQueueItem* newDirItem = (DirQueueItem*)malloc(sizeof(DirQueueItem));
 
@@ -51,6 +65,10 @@ char* FAT;
 char dot[8] = {0x2E,0x20,0x20,0x20,0x20,0x20,0x20,0x20};
 char dotdot[8] = {0x2E,0x2E,0x20,0x20,0x20,0x20,0x20,0x20};
 
+/**
+ * @brief print FAT volume information from bootsector
+ * @param bootsector
+ */
 void printVolumeInformation(BOOTSECTOR* bootsector){
 	if (!bootsector){
 		printf("not a valid FAT bootsector!\n");
@@ -155,6 +173,10 @@ unsigned int getclusteroffset(unsigned short cluster)
     return ret;
 }
 
+/**
+ * @brief Allocates 32 bytes on the heap, reads next DIRENTRY (from current position).
+ * @return pointer to a DIRENTRY structure on the heap
+ */
 DIRENTRY* readDirectoryEntry() {
     DIRENTRY* directoryEntry = (DIRENTRY*)malloc(sizeof(DIRENTRY));
 
@@ -165,9 +187,18 @@ DIRENTRY* readDirectoryEntry() {
         exit(1);
     }
 
+    if(directoryEntry->name[0] == '\0') {
+        return 0;
+    }
+
     return directoryEntry;
 }
 
+/**
+ * @brief isDirectory
+ * @param directoryEntry
+ * @return 1 if directoryEntry is a directory, 0 otherwise
+ */
 int isDirectory(DIRENTRY* directoryEntry) {
     if(!directoryEntry){
         return 0;
@@ -176,10 +207,10 @@ int isDirectory(DIRENTRY* directoryEntry) {
     return ((directoryEntry->attr & (1<<4)) > 0);
 }
 
-/*
- * Formats a date entry like 'DD.MM.YYYY'
- *
- * Input buf needs to be >= 11 bytes
+/**
+ * @brief Formats a date entry like 'DD.MM.YYYY'
+ * @param date is in FAT format
+ * @param buf is a buffer >= 11 bytes which will hold the formatted string
  */
 void formatDirectoryEntryDate(unsigned short date, char* buf) {
     unsigned short year = 1980 + (date >> 9);
@@ -188,10 +219,10 @@ void formatDirectoryEntryDate(unsigned short date, char* buf) {
     sprintf(buf, "%02d.%02d.%d", day, month, year);
 }
 
-/*
- * Formats a time entry like 'HH:MM:SS' (24 hour format)
- *
- * Input buf needs to be >= 9 bytes
+/**
+ * @brief Formats a time entry like 'HH:MM:SS' (24 hour format)
+ * @param time is in FAT format
+ * @param buf is a buffer >= 9 bytes
  */
 void formatDirectoryEntryTime(unsigned short time, char* buf) {
     // Bytes 15 - 11, hours 0 - 23
@@ -203,10 +234,10 @@ void formatDirectoryEntryTime(unsigned short time, char* buf) {
     sprintf(buf, "%02d:%02d:%02d", hour, minute, second);
 }
 
-/*
- * Formats directory entry like 'file.ext'
- *
- * Input buf needs to be >= 14 bytes
+/**
+ * @brief Formats directory entry like 'file.ext'
+ * @param directoryEntry
+ * @param buf is a buffer >= 14 bytes
  */
 void formatDirectoryEntryName(DIRENTRY* directoryEntry, char* buf) {
     strncpy(buf, directoryEntry->name, 8);
@@ -226,11 +257,10 @@ void formatDirectoryEntryName(DIRENTRY* directoryEntry, char* buf) {
     }
 }
 
-/*
- * Retrieves the current folder's name
- *
- * This is useful if you are in a directory and
- * want to know its name but only have a '.' entry at hand.
+/**
+ * @brief Retrieves the current folder's name (handy if you only have a '.' entry at hand)
+ * @param currentDirectoryEntry
+ * @param buf is a buffer big enough to hold the folder name
  */
 void currentFolderName(DIRENTRY* currentDirectoryEntry, char* buf) {
 
@@ -240,13 +270,12 @@ void currentFolderName(DIRENTRY* currentDirectoryEntry, char* buf) {
     lseek(handle, getclusteroffset(currentDirectoryEntry->firstcluser), SEEK_SET);
 
     // read current directory, find parent entry ('..')
-    do {
-        directoryEntry = readDirectoryEntry();
+    while(directoryEntry = readDirectoryEntry()) {
         if(memcmp(directoryEntry->name, dotdot, 8) == 0) {
             parentDirectoryEntry = directoryEntry;
             break;
         }
-    } while(directoryEntry->name[0] != '\0');
+    }
 
     if(!parentDirectoryEntry) {
         printf("Can't find parent directory entry in current directory listing!\n");
@@ -257,17 +286,20 @@ void currentFolderName(DIRENTRY* currentDirectoryEntry, char* buf) {
     // read parent directory, find entry that matches current (original) folder's first cluster
     lseek(handle, getclusteroffset(parentDirectoryEntry->firstcluser), SEEK_SET);
 
-    do {
-        directoryEntry = readDirectoryEntry();
+    while(directoryEntry = readDirectoryEntry()) {
         if(directoryEntry->firstcluser == currentDirectoryEntry->firstcluser) {
             strncpy(buf, directoryEntry->name, strlen(directoryEntry->name));
             return;
         }
-    } while((directoryEntry->name[0] != '\0'));
+    }
 
     printf("Can't find current directory entry in parent directory listing!\n");
 }
 
+/**
+ * @brief Prints a directory entry in a format similar to 'dir'
+ * @param directoryEntry
+ */
 void printDirectoryEntry(DIRENTRY* directoryEntry) {
 
     // date
@@ -293,27 +325,29 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     // file name
     char name[14];
     formatDirectoryEntryName(directoryEntry, name);
-    printf("%s", name);
+    printf("%s  ", name);
+
+    printf("Clusters %d -> %d -> ...", directoryEntry->firstcluser, getnextcluster(directoryEntry->firstcluser));
 
     printf("\n");
 }
 
+/**
+ * @brief Reads a folder listing, prints all items and adds all subdirectories to the global queue
+ * @param offset where the first directory entry of the folder structure begins
+ */
 void listDirectory(unsigned int offset) {
 
     long newOffset = offset;
+    lseek(handle, newOffset, SEEK_SET);
 
     DIRENTRY* directoryEntry;
 
     int FIXME_first = 1;
 
-    do {
-        lseek(handle, newOffset, SEEK_SET);
-        directoryEntry = readDirectoryEntry();
-
+    while(directoryEntry = readDirectoryEntry()) {
         // we need to preserve the offset in case any operations move the file pointer
         newOffset = tell(handle);
-
-        printf("first cluster: %d next cluster: %d\n", directoryEntry->firstcluser, getnextcluster(directoryEntry->firstcluser));
 
         if(FIXME_first) {
             char buf[16];
@@ -331,9 +365,14 @@ void listDirectory(unsigned int offset) {
                 dir_push_back(directoryEntry);
             }
         }
-    } while(directoryEntry->name[0] != '\0');
+
+        lseek(handle, newOffset, SEEK_SET);
+    }
 }
 
+/**
+ * @brief Recursively lists all directories in the global queue and empties that queue
+ */
 void list_recursive() {
     DIRENTRY* directoryEntry;
 
@@ -394,10 +433,11 @@ int main(int argc, char* argv[]) {
     newPos = lseek(handle, rootDirectoryStartPos, SEEK_SET);
     printf("now at %d\n", newPos);
 
+    // list root directory and add subdirectories to global queue
     listDirectory(rootDirectoryStartPos);
-    list_recursive();
 
-	//getchar();
+    // recursively list all directories inside the global queue
+    list_recursive();
 
 	return 0;
 }
