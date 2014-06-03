@@ -387,12 +387,14 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
  */
 void listDirectory(unsigned int offset) {
 
+    // do not read into next cluster
+    long maxOffset = offset + (bootsector->BPB.sectorspercluster * bootsector->BPB.sectorsize);
     long newOffset = offset;
     lseek(handle, newOffset, SEEK_SET);
 
     DIRENTRY* directoryEntry;
 
-    while(directoryEntry = readDirectoryEntry()) {
+    while((newOffset < maxOffset) && (directoryEntry = readDirectoryEntry())) {
         // we need to preserve the offset in case any operations move the file pointer
         newOffset = tell(handle);
 
@@ -405,7 +407,11 @@ void listDirectory(unsigned int offset) {
             printf("absolute path: %s\n", buf2);
         }
 
-        printDirectoryEntry(directoryEntry);
+        if(directoryEntry->attr == DIRENTRY_ATTR_VFAT) {
+            printf("(this is a VFAT entry, skipping...)\n");
+        }else{
+            printDirectoryEntry(directoryEntry);
+        }
 
         if(isDirectory(directoryEntry)) {
             // add subdirectories to the queue
@@ -425,9 +431,14 @@ void listDirectory(unsigned int offset) {
 void list_recursive() {
     DIRENTRY* directoryEntry;
 
+    unsigned int nextCluster;
     while((directoryEntry = dir_pop_front())) {
         printf("== %s ==\n", directoryEntry->name);
-        listDirectory(getclusteroffset(directoryEntry->firstcluser));
+
+        nextCluster = directoryEntry->firstcluser;
+        do{
+            listDirectory(getclusteroffset(nextCluster));
+        }while((nextCluster = getnextcluster(nextCluster)) < CLUSTER_LAST_MIN);
     }
 }
 
