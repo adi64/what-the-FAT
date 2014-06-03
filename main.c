@@ -307,7 +307,8 @@ void currentFolderName(DIRENTRY* currentDirectoryEntry, char* buf) {
 
     while(directoryEntry = readDirectoryEntry()) {
         if(directoryEntry->firstcluser == currentDirectoryEntry->firstcluser) {
-            strncpy(buf, directoryEntry->name, strlen(directoryEntry->name));
+            formatDirectoryEntryName(directoryEntry, buf);
+            //strncpy(buf, directoryEntry->name, strlen(directoryEntry->name));
             return;
         }
     }
@@ -328,11 +329,14 @@ void absoluteDirectoryPath(DIRENTRY* directoryEntry, char* buf) {
         return;
     }
 
+    printf("# ..\\ \n");
     absoluteDirectoryPath(parent, buf);
+    printf("Return from parent\n");
     unsigned short stringLength = strlen(buf);
 
     char dirname[512];
-    formatDirectoryEntryName(directoryEntry, dirname);
+    //formatDirectoryEntryName(directoryEntry, dirname);
+    currentFolderName(directoryEntry, dirname);
 
     sprintf(&buf[stringLength], "\\%s", dirname);
     printf("+ %s (cluster %d) \n", dirname, directoryEntry->firstcluser);
