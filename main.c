@@ -37,17 +37,11 @@ DIRENTRY* dir_pop_front() {
  * @brief Appends entry to the list tail
  * @param directoryEntry pointer to push back
  */
-void dir_push_back(DIRENTRY* directoryEntry) {
+void* dir_push_back(DIRENTRY* directoryEntry) {
     DirQueueItem* newDirItem = (DirQueueItem*)malloc(sizeof(DirQueueItem));
 
     newDirItem->directoryEntry = directoryEntry;
     newDirItem->next = 0;
-
-    if(!firstDirItem) {
-        firstDirItem = (DirQueueItem*)malloc(sizeof(DirQueueItem));
-        firstDirItem->directoryEntry = 0;
-        firstDirItem->next = 0;
-    }
 
     DirQueueItem* lastItem = firstDirItem;
 
@@ -56,6 +50,30 @@ void dir_push_back(DIRENTRY* directoryEntry) {
     }
 
     lastItem->next = newDirItem;
+}
+
+/**
+ * @brief Insert an entry after a given entry
+ * @param entryBefore
+ * @param newEntry
+ */
+void dir_insert(DIRENTRY* entryBefore, DIRENTRY* directoryEntry) {
+    // find entry
+    DirQueueItem* itemBefore = firstDirItem;
+
+    while(itemBefore->directoryEntry != entryBefore && itemBefore->next) {
+        itemBefore = itemBefore->next;
+    }
+    if(itemBefore->directoryEntry != entryBefore) {
+        printf("could not find the given entry in the list!\n");
+        return;
+    }
+
+    DirQueueItem* newDirItem = (DirQueueItem*)malloc(sizeof(DirQueueItem));
+
+    newDirItem->directoryEntry = directoryEntry;
+    newDirItem->next = itemBefore->next;
+    itemBefore->next = newDirItem;
 }
 
 int handle;
@@ -173,7 +191,7 @@ unsigned int getclusteroffset(unsigned short cluster)
         default:
             exit(1);
     }
-    printf("Cluster %d has offset %d\n", cluster, ret);
+    //printf("Cluster %d has offset %d\n", cluster, ret);
     return ret;
 }
 
@@ -184,7 +202,7 @@ unsigned int getclusteroffset(unsigned short cluster)
 DIRENTRY* readDirectoryEntry() {
     DIRENTRY* directoryEntry = (DIRENTRY*)malloc(sizeof(DIRENTRY));
 
-    printf("reading from offset %d...\n", tell(handle));
+    //printf("reading from offset %d...\n", tell(handle));
     unsigned int bytesRead;
     if((bytesRead = read(handle, directoryEntry, sizeof(DIRENTRY))) != sizeof(DIRENTRY)) {
         printf("Could not read %d Bytes(read %d)! errno: %d\n", sizeof(DIRENTRY), bytesRead, errno);
@@ -257,8 +275,10 @@ void formatDirectoryEntryName(DIRENTRY* directoryEntry, char* buf) {
         strncpy(&buf[i+2], directoryEntry->ext, 3);
         buf[i+5] = '\0';
     }else{
-        strnset(&buf[8], 0x20, 4);
-        //buf[8] = '\0';
+        // terminate as early as possible
+        unsigned short i;
+        for(i = 1; i < 8 && buf[i] != 0x20; i++) ;
+        buf[i] = '\0';
     }
 }
 /**
@@ -276,13 +296,8 @@ DIRENTRY* parentDirectory(DIRENTRY* currentDirectoryEntry) {
     while(directoryEntry = readDirectoryEntry()) {
         if(memcmp(directoryEntry->name, dotdot, 8) == 0) {
             parentDirectoryEntry = directoryEntry;
-            printf("parent directory ('%s') at cluster %d\n", parentDirectoryEntry->name, parentDirectoryEntry->firstcluser);
             break;
         }
-    }
-
-    if(!parentDirectoryEntry) {
-        printf("Can't find parent directory entry in current directory listing!\n");
     }
 
     return parentDirectoryEntry;
@@ -298,8 +313,6 @@ void currentFolderName(DIRENTRY* currentDirectoryEntry, char* buf) {
     DIRENTRY* directoryEntry;
     DIRENTRY* parentDirectoryEntry = 0;
 
-    printf("determining folder name for folder at cluster %d...\n", currentDirectoryEntry->firstcluser);
-
     parentDirectoryEntry = parentDirectory(currentDirectoryEntry);
 
     // read parent directory, find entry that matches current (original) folder's first cluster
@@ -308,12 +321,9 @@ void currentFolderName(DIRENTRY* currentDirectoryEntry, char* buf) {
     while(directoryEntry = readDirectoryEntry()) {
         if(directoryEntry->firstcluser == currentDirectoryEntry->firstcluser) {
             formatDirectoryEntryName(directoryEntry, buf);
-            //strncpy(buf, directoryEntry->name, strlen(directoryEntry->name));
             return;
         }
     }
-
-    printf("Can't find current directory entry in parent directory listing!\n");
 }
 
 /**
@@ -322,24 +332,21 @@ void currentFolderName(DIRENTRY* currentDirectoryEntry, char* buf) {
  * @param buf is a buffer big enough to hold the absolute path
  */
 void absoluteDirectoryPath(DIRENTRY* directoryEntry, char* buf) {
+    // if there is no parent directory, we are at root level
     DIRENTRY* parent = parentDirectory(directoryEntry);
     if(parent == 0) {
-        sprintf(buf, "\\\\.\\");
-        printf("\\\\.\\ \n");
+        sprintf(buf, "\\");
         return;
     }
 
-    printf("# ..\\ \n");
+    // if we are not at root level, fire up the recursion
     absoluteDirectoryPath(parent, buf);
-    printf("Return from parent\n");
+
+    // concatenate the path until here and this directory's name
     unsigned short stringLength = strlen(buf);
-
     char dirname[512];
-    //formatDirectoryEntryName(directoryEntry, dirname);
     currentFolderName(directoryEntry, dirname);
-
     sprintf(&buf[stringLength], "\\%s", dirname);
-    printf("+ %s (cluster %d) \n", dirname, directoryEntry->firstcluser);
 }
 
 /**
@@ -371,8 +378,9 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     // file name
     char name[14];
     formatDirectoryEntryName(directoryEntry, name);
-    printf("%s  ", name);
+    printf("%-12s  ", name);
 
+    /*
     // cluster dev info
     unsigned short firstcluster = directoryEntry->firstcluser;
     unsigned short nextcluster = getnextcluster(firstcluster);
@@ -381,6 +389,7 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     if(nextcluster < CLUSTER_LAST_MIN) {
            printf(" -> %d -> ...", nextcluster);
     }
+    */
 
     printf("\n");
 }
@@ -396,6 +405,11 @@ void listDirectory(unsigned int offset) {
     long newOffset = offset;
     lseek(handle, newOffset, SEEK_SET);
 
+    // the reference point in the list where we want to add the subdirectories
+    // by default, we want to add subdirectories to the top so that we get depth-first search
+    DIRENTRY* referencePoint = firstDirItem->directoryEntry;
+
+    // this is where we read into
     DIRENTRY* directoryEntry;
 
     while((newOffset < maxOffset) && (directoryEntry = readDirectoryEntry())) {
@@ -403,12 +417,9 @@ void listDirectory(unsigned int offset) {
         newOffset = tell(handle);
 
         if(memcmp(directoryEntry->name, dot, 8) == 0) {
-            char buf[16];
-            currentFolderName(directoryEntry, buf);
-            printf("folder name: %s\n", buf);
             char buf2[1024];
             absoluteDirectoryPath(directoryEntry, buf2);
-            printf("absolute path: %s\n", buf2);
+            printf("Directory of %s\n", buf2);
         }
 
         if(directoryEntry->attr == DIRENTRY_ATTR_VFAT) {
@@ -421,12 +432,15 @@ void listDirectory(unsigned int offset) {
             // add subdirectories to the queue
             // please ignore the current directory entry ('.') and parent ('..')
             if((memcmp(directoryEntry->name, dot, 8) != 0) && (memcmp(directoryEntry->name, dotdot, 8) != 0)) {
-                dir_push_back(directoryEntry);
+                dir_insert(referencePoint, directoryEntry);
+                referencePoint = directoryEntry;
+                //dir_push_back(directoryEntry);
             }
         }
 
         lseek(handle, newOffset, SEEK_SET);
     }
+
 }
 
 /**
@@ -437,18 +451,23 @@ void list_recursive() {
 
     unsigned int nextCluster;
     while((directoryEntry = dir_pop_front())) {
-        printf("== %s ==\n", directoryEntry->name);
 
         nextCluster = directoryEntry->firstcluser;
         do{
             listDirectory(getclusteroffset(nextCluster));
         }while((nextCluster = getnextcluster(nextCluster)) < CLUSTER_LAST_MIN);
+        printf("\n");
     }
 }
 
 int main(int argc, char* argv[]) {
 
-    char filename[1024] = "BSA.img";
+    // initialize list
+    firstDirItem = (DirQueueItem*)malloc(sizeof(DirQueueItem));
+    firstDirItem->directoryEntry = 0;
+    firstDirItem->next = 0;
+
+    char filename[1024] = "BSA1.img";
     if(argc != 2) {
         printf("Usage: %s filename\n", argv[0]);
         printf("I will pick file '%s' for you.\n", filename);
@@ -482,7 +501,6 @@ int main(int argc, char* argv[]) {
 
     unsigned int newPos;
     newPos = lseek(handle, firstFATStartPos, SEEK_SET);
-    printf("now at %d\n", newPos);
 
     if((bytesRead = read(handle, FAT, FATSize)) != FATSize) {
         printf("Could not read %d Bytes(read %d)! errno: %d\n", FATSize, bytesRead, errno);
@@ -492,13 +510,16 @@ int main(int argc, char* argv[]) {
     unsigned int rootDirectoryStartPos = firstFATStartPos + (bootsector->BPB.numberofFATs * FATSize);
     unsigned int rootDirectoryStartCluster = bootsector->BPB.reservedsectors + bootsector->BPB.FATsectors * bootsector->BPB.numberofFATs;
 
+
     printf("Root directory starting at cluster %d / byte %d\n", rootDirectoryStartCluster, rootDirectoryStartPos);
 
     newPos = lseek(handle, rootDirectoryStartPos, SEEK_SET);
-    printf("now at %d\n", newPos);
+
+    printf("\n");
 
     // list root directory and add subdirectories to global queue
     listDirectory(rootDirectoryStartPos);
+    printf("\n");
 
     // recursively list all directories inside the global queue
     list_recursive();
