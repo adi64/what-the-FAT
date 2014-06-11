@@ -399,6 +399,30 @@ void printDirectoryEntry(DIRENTRY* directoryEntry) {
     printf("\n");
 }
 
+void handleLFN(DIRENTRY* directoryEntry, char* LFNBuffer) {
+    DIRENTRY_V* lfnEntry = (DIRENTRY_V*)directoryEntry;
+
+    int sequenceNumber = lfnEntry->sequence_number & 0x5;
+    int lastSequenceNumber = (lfnEntry->sequence_number & 0x6) == 0x6;
+    printf("Sequence number: %d\n", sequenceNumber);
+    if(lastSequenceNumber) {
+        printf("this is the last sequence number.\n");
+    }
+
+    int offset = sequenceNumber * 13;
+
+    if(offset > 255) {
+        printf("offset %d > 255!\n", offset);
+        return;
+    }
+
+    memcpy(&LFNBuffer[offset], lfnEntry->name_0, 10);
+    memcpy(&LFNBuffer[offset+10], lfnEntry->name_1, 12);
+    memcpy(&LFNBuffer[offset+22], lfnEntry->name_2, 4);
+
+    printf("LFN so far: %s\n", LFNBuffer);
+}
+
 /**
  * @brief Reads a folder listing, prints all items and adds all subdirectories to the global queue
  * @param offset where the first directory entry of the folder structure begins
@@ -417,6 +441,9 @@ void listDirectory(unsigned int offset) {
     // this is where we read into
     DIRENTRY* directoryEntry;
 
+    // in case we have to handle VFAT / LFN entries, prepare the buffer
+    char LFN[260];
+
     while((newOffset < maxOffset) && (directoryEntry = readDirectoryEntry())) {
         // we need to preserve the offset in case any operations move the file pointer
         //newOffset = tell(handle);
@@ -429,7 +456,8 @@ void listDirectory(unsigned int offset) {
         }
 
         if(directoryEntry->attr == DIRENTRY_ATTR_VFAT) {
-            printf("(this is a VFAT entry, skipping...)\n");
+            printf("this is a VFAT entry!\n");
+            handleLFN(directoryEntry, LFN);
         }else{
             printDirectoryEntry(directoryEntry);
         }
@@ -473,7 +501,7 @@ int main(int argc, char* argv[]) {
     firstDirItem->directoryEntry = 0;
     firstDirItem->next = 0;
 
-    char filename[1024] = "BSA1.img";
+    char filename[1024] = "BSA.img";
     if(argc != 2) {
         printf("Usage: %s filename\n", argv[0]);
         printf("I will pick file '%s' for you.\n", filename);
