@@ -5,6 +5,11 @@
 
 #include "data.h"
 
+// Unix / Windows interop
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+
 /**
  * @brief Simple linked list for DIRENTRYs, used as queue
  */
@@ -414,7 +419,8 @@ void listDirectory(unsigned int offset) {
 
     while((newOffset < maxOffset) && (directoryEntry = readDirectoryEntry())) {
         // we need to preserve the offset in case any operations move the file pointer
-        newOffset = tell(handle);
+        //newOffset = tell(handle);
+        newOffset = lseek(handle, 0, SEEK_CUR);
 
         if(memcmp(directoryEntry->name, dot, 8) == 0) {
             char buf2[1024];
