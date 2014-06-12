@@ -478,7 +478,7 @@ int main(int argc, char* argv[]) {
         printf("Usage: %s filename\n", argv[0]);
         printf("I will pick file '%s' for you.\n", filename);
     }else{
-        strncpy(filename, argv[2], 1023);
+        strncpy(filename, argv[1], 1023);
     }
 
     handle = open(filename, O_RDONLY | O_BINARY);
